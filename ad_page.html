@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Watch & Earn</title>
+
+  <!-- Telegram Mini App SDK (required to read userId & close the WebApp) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- AdsGram SDK -->
+  <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #09090f;
+      --surface: #111118;
+      --border:  rgba(255,255,255,0.07);
+      --green:   #00e5a0;
+      --blue:    #00b8ff;
+      --red:     #ff5a5a;
+      --text:    #e8e8f2;
+      --muted:   #666680;
+      --r:       14px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* ── Ambient glow ───────────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 55% 40% at 15%  5%, rgba(0,229,160,0.09) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 85% 95%, rgba(0,184,255,0.08) 0%, transparent 60%);
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    .app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 18px 28px;
+      gap: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    .header { text-align: center; animation: up .45s ease both; }
+    .eyebrow {
+      font-size: 10px; letter-spacing: 3.5px; text-transform: uppercase;
+      color: var(--green); font-weight: 500; margin-bottom: 8px;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(24px, 6.5vw, 34px);
+      font-weight: 800; line-height: 1.1;
+      background: linear-gradient(135deg, #fff 25%, var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .sub { margin-top: 6px; font-size: 13.5px; color: var(--muted); font-weight: 300; }
+
+    /* ── Reward badge ───────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(0,229,160,.1);
+      border: 1px solid rgba(0,229,160,.25);
+      border-radius: 999px; padding: 7px 16px;
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+      color: var(--green);
+      animation: up .45s .08s ease both;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────────────── */
+    .card {
+      width: 100%; max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 22px 20px;
+      display: flex; flex-direction: column; gap: 14px;
+      animation: up .45s .12s ease both;
+    }
+
+    /* ── Status row ─────────────────────────────────────────────────────── */
+    .status {
+      display: flex; align-items: center; gap: 11px;
+      padding: 13px 14px; border-radius: 10px; min-height: 52px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      transition: background .3s, border-color .3s;
+    }
+    .status.ok   { background: rgba(0,229,160,.08); border-color: rgba(0,229,160,.3); }
+    .status.err  { background: rgba(255,90,90,.08);  border-color: rgba(255,90,90,.3); }
+    .status.busy { background: rgba(0,184,255,.06);  border-color: rgba(0,184,255,.2); }
+
+    .s-icon { font-size: 20px; flex-shrink: 0; line-height: 1; }
+    .s-body { flex: 1; min-width: 0; }
+    .s-title { font-size: 14.5px; font-weight: 500; }
+    .s-sub   { font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+
+    /* ── Progress bar ───────────────────────────────────────────────────── */
+    .prog-wrap { display: none; flex-direction: column; gap: 5px; }
+    .prog-wrap.on { display: flex; }
+    .prog-labels { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+    .prog-track { height: 3px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+    .prog-fill  {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      border-radius: 99px; transition: width .6s linear;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn {
+      width: 100%; padding: 14px 12px; border: none; border-radius: 11px;
+      font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer; transition: transform .15s, box-shadow .15s, opacity .15s;
+    }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(.97); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--green), #00c882);
+      color: #07120e;
+    }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(0,229,160,.28);
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.09); }
+
+    /* ── Steps ──────────────────────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 9px; animation: up .45s .18s ease both; }
+    .step  { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+    .step-n {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(255,255,255,.05); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10.5px; font-family: 'Syne', sans-serif; font-weight: 700;
+      color: var(--green); flex-shrink: 0;
+    }
+
+    /* ── Spinner ────────────────────────────────────────────────────────── */
+    .spinner {
+      width: 18px; height: 18px; flex-shrink: 0;
+      border: 2px solid rgba(0,184,255,.2);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+    }
+
+    /* ── Keyframes ──────────────────────────────────────────────────────── */
+    @keyframes up   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <p class="eyebrow">Members Bot</p>
+    <h1>Watch &amp; Earn</h1>
+    <p class="sub">Complete the ad below to receive your credit</p>
+  </div>
+
+  <div class="badge">
+    <span>🪙</span>
+    <span id="rewardLabel">+1 credit per ad</span>
+  </div>
+
+  <div class="card">
+
+    <div class="status" id="statusEl">
+      <span class="s-icon" id="sIcon">📺</span>
+      <div class="s-body">
+        <div class="s-title" id="sTitle">Ready to watch</div>
+        <div class="s-sub"   id="sSub">Tap the button below to start</div>
+      </div>
+    </div>
+
+    <div class="prog-wrap" id="progWrap">
+      <div class="prog-labels">
+        <span>Ad progress</span>
+        <span id="progPct">0%</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    </div>
+
+    <button class="btn btn-primary" id="watchBtn" onclick="startAd()">📺 Watch Ad Now</button>
+    <button class="btn btn-ghost"   id="closeBtn" style="display:none" onclick="closeApp()">Close &amp; Return to Bot</button>
+
+  </div>
+
+  <div class="steps" id="stepsEl">
+    <div class="step"><span class="step-n">1</span><span>Tap "Watch Ad Now"</span></div>
+    <div class="step"><span class="step-n">2</span><span>Watch the full ad without skipping</span></div>
+    <div class="step"><span class="step-n">3</span><span>Credit lands in the bot automatically ✅</span></div>
+  </div>
+
+</div>
+
+<script>
+// ── Telegram Mini App ─────────────────────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
+
+// ── URL params (set by bot.py's _ad_watch_url()) ─────────────────────────
+const p        = new URLSearchParams(location.search);
+const BLOCK_ID = p.get('blockId') || '';
+const USER_ID  = p.get('userId')  || '';
+const REWARD   = parseInt(p.get('reward') || '1', 10);
+
+document.getElementById('rewardLabel').textContent = `+${REWARD} credit per ad`;
+
+if (!BLOCK_ID || !USER_ID) {
+  setStatus('err', '⚠️', 'Missing parameters', 'Please open this page from the bot.');
+  document.getElementById('watchBtn').disabled = true;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+let adCtrl      = null;
+let adRunning   = false;
+let progTimer   = null;
+
+// ── Start ad ──────────────────────────────────────────────────────────────
+async function startAd() {
+  if (adRunning) return;
+  adRunning = true;
+
+  document.getElementById('watchBtn').disabled = true;
+  document.getElementById('closeBtn').style.display = 'none';
+  document.getElementById('stepsEl').style.display  = 'none';
+  setStatus('busy', null, 'Loading ad…', 'Please wait a moment');
+  showSpinner();
+  setProgress(false);
+
+  try {
+    if (!adCtrl) {
+      adCtrl = await window.Adsgram.init({
+        blockId: BLOCK_ID,
+        debug:   false,
+      });
+    }
+    adCtrl.addEventListener('onStart',          onStart);
+    adCtrl.addEventListener('onSkip',           onSkip);
+    adCtrl.addEventListener('onError',          onError);
+    adCtrl.addEventListener('onBannerNotFound', onNoBanner);
+    adCtrl.addEventListener('onReward',         onReward);   // ← fired on completion
+    await adCtrl.show();
+  } catch (e) {
+    onError(e);
+  }
+}
+
+// ── Ad event callbacks ────────────────────────────────────────────────────
+function onStart() {
+  setStatus('busy', null, 'Ad is playing…', 'Watch to the end — don\'t skip!');
+  showSpinner();
+  animateProgress();
+}
+
+function onSkip() {
+  adRunning = false;
+  setProgress(false);
+  setStatus('err', '⏭️', 'Ad skipped', 'You must watch the full ad to earn a credit.');
+  resetBtn('Try Again');
+  document.getElementById('closeBtn').style.display = 'block';
+}
+
+function onError(e) {
+  adRunning = false;
+  setProgress(false);
+  setStatus('err', '❌', 'Ad failed to load', e?.message || 'Please try again later.');
+  resetBtn('Retry');
+  document.getElementById('closeBtn').style.display = 'block';
+}
+
+function onNoBanner() {
+  adRunning = false;
+  setProgress(false);
+  setStatus('err', '😕', 'No ads available', 'No ads for your region right now — try again later.');
+  resetBtn('Try Again');
+  document.getElementById('closeBtn').style.display = 'block';
+}
+
+function onReward() {
+  // AdsGram client confirms completion. Server-side webhook handles the real credit.
+  adRunning = false;
+  setProgress(false, 100);
+  setStatus('ok', '✅', 'Ad completed!', `+${REWARD} credit is being added — check the bot!`);
+  document.getElementById('watchBtn').style.display = 'none';
+
+  const cb = document.getElementById('closeBtn');
+  cb.textContent = '🎉 Back to Bot';
+  cb.style.display = 'block';
+
+  tg?.HapticFeedback?.notificationOccurred('success');
+  setTimeout(closeApp, 4000);  // auto-close after 4 s
+}
+
+// ── Progress bar ──────────────────────────────────────────────────────────
+function animateProgress() {
+  setProgress(true, 0);
+  let pct = 0;
+  progTimer = setInterval(() => {
+    pct = Math.min(pct + 100 / 28, 94);   // fill to 94% over ~28 s
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('progPct').textContent  = Math.round(pct) + '%';
+    if (pct >= 94) clearInterval(progTimer);
+  }, 1000);
+}
+
+function setProgress(show, pct) {
+  document.getElementById('progWrap').className = show ? 'prog-wrap on' : 'prog-wrap';
+  if (!show && progTimer) { clearInterval(progTimer); progTimer = null; }
+  if (pct !== undefined) {
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('progPct').textContent  = pct + '%';
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────
+function setStatus(cls, icon, title, sub) {
+  const el = document.getElementById('statusEl');
+  el.className = 'status' + (cls ? ' ' + cls : '');
+  if (icon !== null) {
+    const ic = document.getElementById('sIcon');
+    ic.textContent = icon;
+    ic.style.display = '';
+  }
+  document.getElementById('sTitle').textContent = title;
+  document.getElementById('sSub').textContent   = sub;
+}
+
+function showSpinner() {
+  const ic = document.getElementById('sIcon');
+  ic.innerHTML = '<div class="spinner"></div>';
+}
+
+function resetBtn(label) {
+  const btn = document.getElementById('watchBtn');
+  btn.textContent = '📺 ' + label;
+  btn.disabled    = false;
+  adCtrl = null;
+  document.getElementById('stepsEl').style.display = 'flex';
+}
+
+function closeApp() {
+  if (tg) tg.close();
+  else     window.close();
+}
+</script>
+</body>
+</html>
